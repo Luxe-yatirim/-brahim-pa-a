@@ -1,0 +1,5 @@
+{
+  "surum": "1.0.0",
+  "ana": "ana.js",
+  "moduller": ["musteri.js", "emlak.js", "finans.js", "saglik.js", "not.js"]
+}
