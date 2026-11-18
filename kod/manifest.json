@@ -1,5 +1,5 @@
 {
-  "surum": "1.1.0",
+  "surum": "1.2.0",
   "ana": "ana.js",
   "moduller": [
     "musteri.js",
@@ -15,6 +15,7 @@
     "takvim.js",
     "harita.js",
     "parsel.js",
-    "kopyala.js"
+    "kopyala.js",
+    "arayuz.js"
   ]
 }

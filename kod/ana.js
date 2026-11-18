@@ -372,16 +372,14 @@ async function uygula(sonuc, veri, eylemModulleri) {
 
 // ---------- Widget (API'ye gitmeden, telefondaki veriden) ----------
 function ayToplami(kayitlar, tur) {
-  const ay = new Date().toISOString().slice(0, 7);
+  const ay = yerelISO(new Date()).slice(0, 7);
   return kayitlar
     .filter(k => k.tur === tur && String(k.tarih || k.eklendi || "").slice(0, 7) === ay)
     .reduce((t, k) => t + (parseFloat(String(k.tutar || "0").replace(/\./g, "").replace(",", ".")) || 0), 0);
 }
-const tl = n => Math.round(n).toLocaleString("tr-TR") + " ₺";
 
 async function widgetYap() {
   const veri = await veriOku();
-  const k = veri.kayitlar;
   const w = new ListWidget();
   w.backgroundColor = new Color("#1c1c1e");
   w.url = "scriptable:///run/Asistan";
@@ -394,11 +392,10 @@ async function widgetYap() {
     t.font = Font.systemFont(12);
     t.textColor = new Color(renk || "#d1d1d6");
   };
-  const aktifMusteri = k.filter(x => x.tur === "musteri" && !/kapand/i.test(x.durum || "")).length;
-  const aktifEmlak = k.filter(x => x.tur === "emlak" && !/(satıld|kiraland)/i.test(x.durum || "")).length;
-  satir(`👤 ${aktifMusteri} müşteri  🏠 ${aktifEmlak} ilan`);
-  satir(`⬆︎ ${tl(ayToplami(k, "gelir"))}`, "#30d158");
-  satir(`⬇︎ ${tl(ayToplami(k, "gider"))}`, "#ff453a");
+  const ist = istatistik(veri);
+  satir(`👤 ${ist.musteri} müşteri  🏠 ${ist.ilan} ilan`);
+  satir(`⬆︎ ${ist.gelir}`, "#30d158");
+  satir(`⬇︎ ${ist.gider}`, "#ff453a");
   try {
     const bugunBit = new Date(); bugunBit.setHours(23, 59, 59);
     const etk = await CalendarEvent.between(new Date(), bugunBit, []);
@@ -411,6 +408,37 @@ async function widgetYap() {
   return w;
 }
 
+// ---------- İstatistik (widget ve sohbet ekranı için) ----------
+function istatistik(veri) {
+  const k = veri.kayitlar;
+  return {
+    musteri: k.filter(x => x.tur === "musteri" && !/kapand/i.test(x.durum || "")).length,
+    ilan: k.filter(x => x.tur === "emlak" && !/(satıld|kiraland)/i.test(x.durum || "")).length,
+    gelir: kisaTL(ayToplami(k, "gelir")),
+    gider: kisaTL(ayToplami(k, "gider"))
+  };
+}
+function kisaTL(n) {
+  if (n >= 1e6) return (n / 1e6).toLocaleString("tr-TR", { maximumFractionDigits: 1 }) + " Mn ₺";
+  if (n >= 1e4) return Math.round(n / 1e3).toLocaleString("tr-TR") + " B ₺";
+  return Math.round(n).toLocaleString("tr-TR") + " ₺";
+}
+
+// ---------- Tek bir komutu işle ----------
+async function isle(metin, kayitModulleri, eylemModulleri) {
+  try {
+    const anahtar = await anahtarAl();
+    const [veri, gecmis, ajandaMetni] = await Promise.all([veriOku(), jsonOku(gecmisDosya, []), ajanda()]);
+    const sonuc = await claudeSor(anahtar, metin, veri, gecmis, ajandaMetni, kayitModulleri, eylemModulleri);
+    const cikti = await uygula(sonuc, veri, eylemModulleri);
+    gecmis.push({ k: metin.slice(0, 500), a: cikti.slice(0, 1500) });
+    fm.writeString(gecmisDosya, JSON.stringify(gecmis.slice(-GECMIS_UZUNLUK)));
+    return { metin: cikti, hata: false };
+  } catch (e) {
+    return { metin: "Bir sorun oldu: " + e.message, hata: true };
+  }
+}
+
 // ---------- Giriş noktası (yükleyici çağırır) ----------
 module.exports.calistir = async function (args, config, moduller, surum) {
   if (config.runsInWidget) {
@@ -419,26 +447,40 @@ module.exports.calistir = async function (args, config, moduller, surum) {
   }
   const kayitModulleri = moduller.filter(m => m && m.tip !== "eylem" && Array.isArray(m.turler));
   const eylemModulleri = moduller.filter(m => m && m.tip === "eylem" && typeof m.calistir === "function");
-  let cikti;
-  let metin = null;
-  try {
-    metin = await girdiAl(args);
+  const arayuz = moduller.find(m => m && m.tip === "arayuz");
+
+  // Siri / Kestirme: ekran yok, cevabı Kestirmeye geri ver (sesli okunur)
+  if (args.shortcutParameter || config.runsWithSiri) {
+    const metin = args.shortcutParameter ? String(args.shortcutParameter) : await girdiAl(args);
     if (!metin) return null;
-    const anahtar = await anahtarAl();
-    const [veri, gecmis, ajandaMetni] = await Promise.all([veriOku(), jsonOku(gecmisDosya, []), ajanda()]);
-    const sonuc = await claudeSor(anahtar, metin, veri, gecmis, ajandaMetni, kayitModulleri, eylemModulleri);
-    cikti = await uygula(sonuc, veri, eylemModulleri);
-    gecmis.push({ k: metin.slice(0, 500), a: cikti.slice(0, 500) });
-    fm.writeString(gecmisDosya, JSON.stringify(gecmis.slice(-GECMIS_UZUNLUK)));
-  } catch (e) {
-    cikti = "Bir sorun oldu: " + e.message;
+    return (await isle(metin, kayitModulleri, eylemModulleri)).metin;
   }
-  if (!config.runsWithSiri && !args.shortcutParameter) {
-    const a = new Alert();
-    a.title = "İbrahim Paşa (v" + surum + ")";
-    a.message = cikti;
-    a.addAction("Tamam");
-    await a.present();
+
+  // Uygulama içi veya Paylaş menüsü: sohbet ekranı
+  const paylasilan = (args.plainTexts && args.plainTexts.length) || (args.urls && args.urls.length)
+    ? await girdiAl(args) : "";
+  if (arayuz && typeof WebView !== "undefined") {
+    await anahtarAl(); // ilk kurulumda anahtarı ekrandan önce sor
+    await arayuz.ac({
+      surum,
+      gecmis: await jsonOku(gecmisDosya, []),
+      istatistik: istatistik(await veriOku()),
+      isle: m => isle(m, kayitModulleri, eylemModulleri),
+      ist: async () => istatistik(await veriOku()),
+      ilkMesaj: paylasilan,
+      ilkGosterim: [...(args.plainTexts || []), ...(args.urls || [])].join("\n").slice(0, 300)
+    });
+    return null;
   }
-  return cikti;
+
+  // Yedek: düz kutu
+  const metin = paylasilan || await girdiAl(args);
+  if (!metin) return null;
+  const sonuc = await isle(metin, kayitModulleri, eylemModulleri);
+  const a = new Alert();
+  a.title = "İbrahim Paşa (v" + surum + ")";
+  a.message = sonuc.metin;
+  a.addAction("Tamam");
+  await a.present();
+  return sonuc.metin;
 };
