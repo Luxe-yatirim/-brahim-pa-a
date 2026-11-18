@@ -20,6 +20,7 @@ Müşteri, emlak (daire/arsa/iş yeri), gelir-gider, sağlıklı yaşam ve notla
 | Kod, metin | "Sahibinden için bu daireye ilan metni yaz", "Excel'de komisyon formülü yaz" |
 | Geri al | "Geri al" (son kayıt değişikliğini geri alır) |
 | Günlük özet | "Günlük özet" (takvim, hatırlatıcılar, takipteki müşteriler, ay durumu) |
+| Sorun giderme | "test" (internet, API anahtarı, izinler ve son kayıtları gösterir) |
 
 **Derin mod:** Komutta "detaylı", "analiz et", "karşılaştır", "kod yaz", "strateji" gibi kelimeler geçerse en üst düzey düşünme ve daha fazla internet araması açılır. Normal komutlar hızlı modda çalışır.
 
@@ -39,14 +40,14 @@ Müşteri, emlak (daire/arsa/iş yeri), gelir-gider, sağlıklı yaşam ve notla
 2. console.anthropic.com adresinde hesap aç, kredi yükle, bir API anahtarı oluştur.
 3. Scriptable'da **+** ile yeni betik aç, `Yukleyici.js` içeriğini yapıştır, betiğin adını **Asistan** yap.
 4. Betiği bir kez çalıştır: API anahtarını yapıştır. Rehber, Takvim ve Hatırlatıcılar izni isterse **İzin Ver**.
-5. **Siri:** Kestirmeler'de yeni kestirme:
-   - "Metin İste" (veya "Dikte Et"),
-   - Scriptable **Run Script**: betik *Asistan*, Parametre = önceki metin, **Run In App açık** (mesaj/takvim ekranlarının açılabilmesi için),
-   - "Konuş" ile Run Script çıktısını okut,
-   - Adı **İbrahim Paşa** olsun. Artık "Hey Siri, İbrahim Paşa".
+5. **Siri (sesli konuşma):** Kestirmeler'de yeni kestirme, sadece 2 adım:
+   - **Dikte Et** (Dictate Text): Dil Türkçe, "Dinlemeyi Durdur: Duraklamadan Sonra",
+   - Scriptable **Run Script**: Script = *Asistan*, Parameter = *Dikte Edilen Metin*, **Run In App açık**.
+   - "Konuş" eylemi EKLEME: İbrahim Paşa cevabı kendisi sesli okur.
+   - Adı **İbrahim Paşa** olsun. "Hey Siri, İbrahim Paşa" de, sorunu söyle, cevabı sesli dinle.
 6. **Paylaş menüsü:** Scriptable'da betiğin ayarlarında (⚙︎) Share Sheet Inputs: **Text** ve **URL** aç.
 7. **Widget:** Ana ekranda boş yere basılı tut > + > Scriptable > küçük ya da orta widget > widget'a dokun > Script: **Asistan**.
-8. **Her sabah özet (isteğe bağlı):** Kestirmeler > Otomasyon > Günün Saati 08:00 > Run Script (Asistan, Parametre: "günlük özet") > Konuş. "Hemen Çalıştır" seç.
+8. **Her sabah özet (isteğe bağlı):** Kestirmeler > Otomasyon > Günün Saati 08:00 > Run Script (Asistan, Parametre: "günlük özet", Run In App açık). "Hemen Çalıştır" seç.
 
 ## Güncelleme
 

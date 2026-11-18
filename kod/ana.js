@@ -16,6 +16,24 @@ const klasor = fm.joinPath(fm.documentsDirectory(), "Asistan");
 if (!fm.fileExists(klasor)) fm.createDirectory(klasor);
 const dosya = fm.joinPath(klasor, "veri.json");
 const gecmisDosya = fm.joinPath(klasor, "gecmis.json");
+const logDosya = fm.joinPath(klasor, "log.txt");
+
+// ---------- Kayıt defteri (sorun çözmek için) ----------
+function log(satir) {
+  try {
+    const eski = fm.fileExists(logDosya) ? fm.readString(logDosya) || "" : "";
+    const yeni = (eski + `${new Date().toISOString()} ${satir}\n`).split("\n").slice(-200).join("\n");
+    fm.writeString(logDosya, yeni);
+  } catch (e) { /* log yazılamazsa da devam */ }
+}
+function zamanAsimi(soz, ms, mesaj) {
+  let t;
+  return Promise.race([soz, new Promise((_, red) => { t = Timer.schedule(ms, false, () => red(new Error(mesaj))); })])
+    .finally(() => { if (t) t.invalidate(); });
+}
+function zamanAsimiVarsayilan(soz, ms, varsayilan) {
+  return zamanAsimi(soz, ms, "zaman aşımı").catch(() => varsayilan);
+}
 
 // ---------- Dosya yardımcıları ----------
 async function jsonOku(yol, varsayilan) {
@@ -426,17 +444,61 @@ function kisaTL(n) {
 
 // ---------- Tek bir komutu işle ----------
 async function isle(metin, kayitModulleri, eylemModulleri) {
+  const t0 = Date.now();
+  log("girdi: " + metin.slice(0, 120));
   try {
+    if (/^\s*(test|tanı|tani)\s*$/i.test(metin)) return { metin: await teshis(), hata: false };
     const anahtar = await anahtarAl();
-    const [veri, gecmis, ajandaMetni] = await Promise.all([veriOku(), jsonOku(gecmisDosya, []), ajanda()]);
-    const sonuc = await claudeSor(anahtar, metin, veri, gecmis, ajandaMetni, kayitModulleri, eylemModulleri);
-    const cikti = await uygula(sonuc, veri, eylemModulleri);
+    const [veri, gecmis, ajandaMetni] = await Promise.all([
+      veriOku(),
+      jsonOku(gecmisDosya, []),
+      zamanAsimiVarsayilan(ajanda(), 4000, "(takvim okunamadı)")
+    ]);
+    log("hazırlık bitti " + (Date.now() - t0) + " ms");
+    const sonuc = await zamanAsimi(
+      claudeSor(anahtar, metin, veri, gecmis, ajandaMetni, kayitModulleri, eylemModulleri),
+      85000, "Claude 85 saniyede cevap vermedi. İnternetini kontrol edip tekrar dene."
+    );
+    log("claude cevap verdi " + (Date.now() - t0) + " ms");
+    const cikti = (await uygula(sonuc, veri, eylemModulleri)) || "Tamam.";
     gecmis.push({ k: metin.slice(0, 500), a: cikti.slice(0, 1500) });
     fm.writeString(gecmisDosya, JSON.stringify(gecmis.slice(-GECMIS_UZUNLUK)));
+    log("bitti " + (Date.now() - t0) + " ms");
     return { metin: cikti, hata: false };
   } catch (e) {
+    log("HATA: " + e.message);
     return { metin: "Bir sorun oldu: " + e.message, hata: true };
   }
+}
+
+// "test" yazınca: internet, API anahtarı ve izinleri tek tek dener
+async function teshis() {
+  const satir = [];
+  const dene = async (ad, is) => {
+    const t = Date.now();
+    try { satir.push(`✅ ${ad}: ${(await is()) || "tamam"} (${Date.now() - t} ms)`); }
+    catch (e) { satir.push(`❌ ${ad}: ${e.message}`); }
+  };
+  await dene("İnternet", async () => {
+    const r = new Request("https://api.anthropic.com/v1/models"); r.timeoutInterval = 10;
+    await r.loadString(); return "ulaşıldı";
+  });
+  await dene("API anahtarı", async () => {
+    if (!Keychain.contains(KEY_NAME)) throw new Error("kayıtlı değil");
+    const r = new Request("https://api.anthropic.com/v1/messages");
+    r.method = "POST"; r.timeoutInterval = 30;
+    r.headers = { "content-type": "application/json", "x-api-key": Keychain.get(KEY_NAME), "anthropic-version": "2026-10-21" };
+    r.body = JSON.stringify({ model: MODEL, max_tokens: 50, output_config: { effort: "low" }, messages: [{ role: "user", content: "Sadece 'tamam' yaz." }] });
+    const y = await r.loadJSON();
+    if (y.type === "error") throw new Error(y.error.message);
+    return "çalışıyor";
+  });
+  await dene("Takvim", async () => `${(await zamanAsimi(CalendarEvent.today([]), 4000, "izin yok veya cevap yok")).length} etkinlik`);
+  await dene("Hatırlatıcılar", async () => `${(await zamanAsimi(Reminder.allIncomplete([]), 4000, "izin yok veya cevap yok")).length} açık`);
+  await dene("Rehber", async () => `${(await zamanAsimi(rehber(), 6000, "izin yok veya cevap yok")).length} kişi`);
+  await dene("Kayıtlar", async () => `${(await veriOku()).kayitlar.length} kayıt`);
+  const sonLog = fm.fileExists(logDosya) ? fm.readString(logDosya).trim().split("\n").slice(-6).join("\n") : "";
+  return "Sistem testi:\n" + satir.join("\n") + (sonLog ? "\n\nSon kayıtlar:\n" + sonLog : "");
 }
 
 // ---------- Giriş noktası (yükleyici çağırır) ----------
@@ -449,11 +511,19 @@ module.exports.calistir = async function (args, config, moduller, surum) {
   const eylemModulleri = moduller.filter(m => m && m.tip === "eylem" && typeof m.calistir === "function");
   const arayuz = moduller.find(m => m && m.tip === "arayuz");
 
-  // Siri / Kestirme: ekran yok, cevabı Kestirmeye geri ver (sesli okunur)
+  // Siri / Kestirme: cevabı sesli söyle ve Kestirmeye geri ver
   if (args.shortcutParameter || config.runsWithSiri) {
-    const metin = args.shortcutParameter ? String(args.shortcutParameter) : await girdiAl(args);
-    if (!metin) return null;
-    return (await isle(metin, kayitModulleri, eylemModulleri)).metin;
+    log(`kestirme: siri=${config.runsWithSiri} uygulama=${config.runsInApp}`);
+    const metin = args.shortcutParameter ? String(args.shortcutParameter).trim() : "";
+    if (!metin) {
+      const uyari = "Seni duyamadım, tekrar söyler misin?";
+      if (config.runsInApp) await Speech.speak(uyari);
+      return uyari;
+    }
+    const sonuc = await isle(metin, kayitModulleri, eylemModulleri);
+    // "Run In App" açıksa cevabı Scriptable kendisi okur; kestirmeye "Konuş" eklemeye gerek yok
+    if (config.runsInApp) await Speech.speak(sonuc.metin);
+    return sonuc.metin;
   }
 
   // Uygulama içi veya Paylaş menüsü: sohbet ekranı

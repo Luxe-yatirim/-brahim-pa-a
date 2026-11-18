@@ -11,7 +11,8 @@ const HIZLI_DUGMELER = [
   { etiket: "📊 Bu ay", metin: "Bu ayın gelir-gider özetini çıkar", gonder: true },
   { etiket: "💵 Döviz & altın", metin: "Bugün dolar, euro ve gram altın kaç?", gonder: true },
   { etiket: "❤️ Sağlık", metin: "Bu hafta sağlık durumum nasıl?", gonder: true },
-  { etiket: "↩️ Geri al", metin: "Geri al", gonder: true }
+  { etiket: "↩️ Geri al", metin: "Geri al", gonder: true },
+  { etiket: "🩺 Sistem testi", metin: "test", gonder: true }
 ];
 
 function html(durum) {
