@@ -1,5 +1,20 @@
 {
-  "surum": "1.0.0",
+  "surum": "1.1.0",
   "ana": "ana.js",
-  "moduller": ["musteri.js", "emlak.js", "finans.js", "saglik.js", "not.js"]
+  "moduller": [
+    "musteri.js",
+    "emlak.js",
+    "finans.js",
+    "saglik.js",
+    "not.js",
+    "mesaj.js",
+    "whatsapp.js",
+    "eposta.js",
+    "arama.js",
+    "hatirlatici.js",
+    "takvim.js",
+    "harita.js",
+    "parsel.js",
+    "kopyala.js"
+  ]
 }
